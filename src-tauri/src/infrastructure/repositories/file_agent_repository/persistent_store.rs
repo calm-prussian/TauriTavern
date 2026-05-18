@@ -64,26 +64,32 @@ impl FileAgentRepository {
             ))
         })?;
 
-        let base_state_dir = match run.persist_base_state_id.as_deref() {
-            Some(state_id) => {
-                let state_dir = self.persistent_state_dir(&run.workspace_id, state_id)?;
-                let manifest = self.read_persistent_state_manifest(&state_dir).await?;
-                if manifest.state_id != state_id {
-                    return Err(DomainError::InvalidData(format!(
-                        "agent.persistent_state_manifest_mismatch: manifest state `{}` does not match requested state `{state_id}`",
-                        manifest.state_id
-                    )));
+        let base_state_dir: Option<std::path::PathBuf> =
+            match run.persist_base_state_id.as_deref() {
+                Some(state_id) => {
+                    let state_dir = self.persistent_state_dir(&run.workspace_id, state_id)?;
+                    match self.read_persistent_state_manifest(&state_dir).await {
+                        Ok(manifest) => {
+                            if manifest.state_id != state_id {
+                                return Err(DomainError::InvalidData(format!(
+                                    "agent.persistent_state_manifest_mismatch: manifest state `{}` does not match requested state `{state_id}`",
+                                    manifest.state_id
+                                )));
+                            }
+                            if manifest.workspace_id != run.workspace_id {
+                                return Err(DomainError::InvalidData(format!(
+                                    "agent.persistent_state_workspace_mismatch: state `{state_id}` belongs to workspace `{}`",
+                                    manifest.workspace_id
+                                )));
+                            }
+                            Some(state_dir)
+                        }
+                        Err(DomainError::NotFound(_)) => None,
+                        Err(error) => return Err(error),
+                    }
                 }
-                if manifest.workspace_id != run.workspace_id {
-                    return Err(DomainError::InvalidData(format!(
-                        "agent.persistent_state_workspace_mismatch: state `{state_id}` belongs to workspace `{}`",
-                        manifest.workspace_id
-                    )));
-                }
-                Some(state_dir)
-            }
-            None => None,
-        };
+                None => None,
+            };
 
         let mut files = Vec::new();
         for root in persistent_roots(manifest)? {

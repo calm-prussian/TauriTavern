@@ -286,6 +286,8 @@ impl AgentRuntimeService {
 
         self.transition_status(run_id, AgentRunStatus::Completed)
             .await?;
+        self.active_runs.write().await.remove(run_id);
+        self.clear_pending_chat_commits_for_run(run_id).await;
         self.event(
             run_id,
             AgentRunEventLevel::Info,
@@ -293,8 +295,6 @@ impl AgentRuntimeService {
             Value::Null,
         )
         .await?;
-        self.active_runs.write().await.remove(run_id);
-        self.clear_pending_chat_commits_for_run(run_id).await;
 
         Ok(())
     }
